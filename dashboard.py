@@ -20,25 +20,43 @@ def load_data(data_path: pathlib.Path = pathlib.Path(__file__).parent / 'data'):
 
 
 @st.cache()
-def buil_rundown(raw_rundown, teamA, teamB, teamA_data, teamB_data):
+def buil_rundown(game_data):
     """
     Build markdown match rundown.
     """
-    nicer_rundown = []
+    raw_rundown, teamA_data, teamB_data = game_data['Rundown'], game_data['TeamA'], game_data['TeamB']
+    teamA, teamB = game_data['Basics']['Name'].iloc[0], game_data['Basics']['Name'].iloc[1]
+    nicer_rundown = [f'## Minute &nbsp; Score {teamA}:{teamB} &nbsp; Play']
     minute = 0
+    score = {'A': 0, 'B': 0}
+    whoscored = ''
+    # TODO: include fouls and quarters in rundown
     for row in raw_rundown.iterrows():
         if row[1].Minute:  # gather current minute
             minute = row[1].Minute
         if row[1]['# A'] >= 0:  # gather player and team name
-            name = teamA_data[row[1]['# A'] == teamA_data['#']].Name
+            whoscored = 'A'
             team = teamA
+            name = teamA_data[row[1]['# A'] == teamA_data['#']].Name
         else:
-            name = teamB_data[row[1]['# B'] == teamB_data['#']].Name
+            whoscored = 'B'
             team = teamB
+            name = teamB_data[row[1]['# B'] == teamB_data['#']].Name
         #  gather scoring type
-        # TODO: check if 3pointer, free throw or regular basket was made
-        #  by looking at point differential, might include emojis for this
-
+        points = row[1][f'Score {whoscored}'] - score[whoscored]
+        if points == 3:
+            play = 'hit a three 🎯'
+        elif points == 2:
+            play = 'made a bucket ⛹️‍♂️'
+        elif points == 1:
+            play = 'made a free throw 🏀'
+        else:
+            assert row[1][f'Score {whoscored}'] in '-', 'Error: No valid number of points made but also no sign for missed freethrow!'
+            play = 'missed a free throw 🧱'
+        score[whoscored] += points
+        # make entry for nicer rundown
+        line = f'{minute:02d}: &nbsp; {score.values()[0]}:{score.values()[1]} &nbsp; {team}: {name} {play}'
+        nicer_rundown.append(line)
 
 
 # build streamlit page
