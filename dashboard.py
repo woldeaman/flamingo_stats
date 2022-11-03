@@ -28,13 +28,18 @@ def build_rundown(game_data):
     """
     Build markdown match rundown.
     """
+    # collect stats
     raw_rundown, teamA_data, teamB_data = game_data['Rundown'], game_data['TeamA'], game_data['TeamB']
     teamA, teamB = game_data['Basics']['Name'].values
-    nicer_rundown = [f'## Minute &nbsp; Score {teamA}:{teamB} &nbsp; Play']
+    stats = ['Player', 'PF', 'FGM', '3PM', 'FTM', 'FTA', 'FT%', 'PTS']
+    player_stats = {team: pd.DataFrame(0, index=game_data[ord]['Name'], columns=stats)
+                    for ord, team in zip(['TeamA', 'TeamB'], [teamA, teamB])}
+
+    # running variables
     minute = 0
     score = {'A': 0, 'B': 0}
     whoscored = ''
-
+    nicer_rundown = [f'## Minute &nbsp; Score {teamA}:{teamB} &nbsp; Play']
     for row in raw_rundown.iterrows():
         if row[1].Minute >= 0:  # gather current minute
             minute = row[1].Minute
@@ -48,6 +53,7 @@ def build_rundown(game_data):
             foul_line = f'{int(minute):02d}: &nbsp; {team_fouled}: {player_fouled} commited a foul 🚨'
             if foul_line not in nicer_rundown:  # only print once
                 nicer_rundown.append(foul_line)
+                player_stats[team_fouled].loc[player_fouled, 'PF'] += 1  # add foul to player stats
 
         if row[1]['# A'] >= 0:  # gather scoring player and team name
             whoscored = 'A'
@@ -66,14 +72,21 @@ def build_rundown(game_data):
         points = row[1][f'Score {whoscored}'] - score[whoscored] if str(row[1][f'Score {whoscored}']).isdigit() else 0
         if points == 3:
             play = 'hit a three 🎯'
+            player_stats[team].loc[name, '3PM'] += 1  # add to player stats
         elif points == 2:
             play = 'made a bucket ⛹️‍♂️'
+            player_stats[team].loc[name, 'FGM'] += 1  # add to player stats
         elif points == 1:
             play = 'made a free throw 🏀'
+            player_stats[team].loc[name, 'FTM'] += 1  # add to player stats
+            player_stats[team].loc[name, 'FTA'] += 1
         else:
             assert row[1][f'Score {whoscored}'] in '-', 'Error: No valid number of points made but also no sign for missed freethrow!'
             play = 'missed a free throw 🧱'
+            player_stats[team].loc[name, 'FTA'] += 1  # add to player stats
+
         score[whoscored] += points
+        player_stats[team].loc[name, 'PTS'] += points  # add to player stats
 
         # make entry for nicer rundown
         scoreA, scoreB = score.values()
@@ -93,8 +106,14 @@ def build_rundown(game_data):
     end = [f'----- &nbsp; End of 4th quarter - Score: {int(scoreA):02d}:{int(scoreB):02d} &nbsp; -----',
            f'----- &nbsp; End of Game, Team {winner} wins: {int(scoreA):02d}:{int(scoreB):02d} &nbsp; -----']
     nicer_rundown += end
+    # calculate overall FT percentage and add nbr
+    for team in [teamA, teamB]:
+        player_stats[team]['FT%'] = 100 * player_stats[team]['FTM'] / player_stats[team]['FTA']
+    for ord, team in zip(['TeamA', 'TeamB'], [teamA, teamB]):
+        player_stats[team]['Player'] = player_stats[team].index
+        player_stats[team].index = [game_data[ord]['#'].values]
 
-    return nicer_rundown
+    return nicer_rundown, player_stats
 
 
 def print_game_stats(game_dat):
@@ -102,22 +121,26 @@ def print_game_stats(game_dat):
     Display nice game stats.
     """
     # generate rundown
-    rundown = build_rundown(game_dat)
+    rundown, player_stats = build_rundown(game_dat)
 
     # display selected game data
-    with st.container():
-        st.dataframe(game_dat['Basics'])
+    tab1, tab2 = st.tabs(["Stats", "Play by Play"])
+
+    with tab1:
+        st.dataframe(game_dat['Basics'].set_index('Team'))
         col1, col2 = st.columns(2)
-        for col, team in zip([col1, col2], ['TeamA', 'TeamB']):
+        for col, team in zip([col1, col2], game_dat['Basics'].Name.values):
             with col:
-                st.dataframe(game_dat[team])
+                st.dataframe(player_stats[team])
+        # TODO: make the formatting look nice here and add team data with altair
     # print rundown
-    with st.container():
+    with tab2:
         for line in rundown:
             st.write(line)
+        # TODO: make the rundown look nicer and add barplot with altair
+
         # make_game_plot(rundown, game_dat['Basics']['Name'][0], game_dat['Basics']['Name'][1])
 
-    # TODO: make this look nicer
 
 
 # def make_game_plot(rundown, teamA, teamB):
@@ -146,7 +169,7 @@ def print_player_stats(player):
     Display player stats.
     """
     st.write(f'{player} Player Stats')
-    # TODO: calculate player stats
+#     # TODO: calculate player stats averaged over multpiple games
 
 
 # build streamlit page
