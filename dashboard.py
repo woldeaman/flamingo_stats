@@ -1,13 +1,22 @@
 import pathlib
-import numpy as np
 import pandas as pd
 import streamlit as st
 
 
+#############
+# FUNCTIONS #
+############################################################################################################################
 # @st.cache()
-def load_data(data_path: pathlib.Path = pathlib.Path(__file__).parent / 'data'):
+# NOTE: this could also be hosted on google drive instad of inside the repo
+def load_data(data_path: pathlib.Path = pathlib.Path(__file__).parent / 'data') -> tuple:
     """
-    Load data from excel files.
+    Load data from excel files in pre-defined format
+
+    :param data_path:               path to excel files
+    :return dates:                  return dates of matchdays
+    :return game_data:              return corresponding game data in dataframe
+    :return roster:                 return flamingos player roster in dataframe
+    ```
     """
     game_path = data_path / 'games/'
     excel_files = list(game_path.glob('*.xlsx'))
@@ -24,9 +33,14 @@ def load_data(data_path: pathlib.Path = pathlib.Path(__file__).parent / 'data'):
 
 
 # @st.cache()
-def build_rundown(game_data):
+def build_rundown(game_data: dict) -> tuple:
     """
-    Build markdown match rundown.
+    Build markdown formatted rundown listing game events.
+
+    :param game_data:               dictionary containing dataframes of game data based on match report
+    :return nicer_rundown:          list of markdown formatted strings for each game event
+    :return player_stats:           detailed stats for each player
+    ```
     """
     # collect stats
     raw_rundown, teamA_data, teamB_data = game_data['Rundown'], game_data['TeamA'], game_data['TeamB']
@@ -81,7 +95,8 @@ def build_rundown(game_data):
             player_stats[team].loc[name, 'FTM'] += 1  # add to player stats
             player_stats[team].loc[name, 'FTA'] += 1
         else:
-            assert row[1][f'Score {whoscored}'] in '-', 'Error: No valid number of points made but also no sign for missed freethrow!'
+            assert row[1][f'Score {whoscored}'] in '-', 'Error: No valid number of points made but also \
+                no sign for missed freethrow!'
             play = 'missed a free throw 🧱'
             player_stats[team].loc[name, 'FTA'] += 1  # add to player stats
 
@@ -97,7 +112,8 @@ def build_rundown(game_data):
         if minute % 10 == 0 and minute < 40:
             position = {1: 'st', 2: 'nd', 3: 'rd'}
             qtr = int(minute // 10)
-            qtr_line = f'----- &nbsp; End of {qtr}{position[qtr]} quarter - Score: {int(scoreA):02d}:{int(scoreB):02d} &nbsp; -----'
+            qtr_line = f'----- &nbsp; End of {qtr}{position[qtr]} quarter - \
+                Score: {int(scoreA):02d}:{int(scoreB):02d} &nbsp; -----'
             if raw_rundown.iloc[row[0] + 1].Minute > minute:  # only print at the end
                 nicer_rundown.append(qtr_line)
 
@@ -114,33 +130,6 @@ def build_rundown(game_data):
         player_stats[team].index = [game_data[ord]['#'].values]
 
     return nicer_rundown, player_stats
-
-
-def print_game_stats(game_dat):
-    """
-    Display nice game stats.
-    """
-    # generate rundown
-    rundown, player_stats = build_rundown(game_dat)
-
-    # display selected game data
-    tab1, tab2 = st.tabs(["Stats", "Play by Play"])
-
-    with tab1:
-        st.dataframe(game_dat['Basics'].set_index('Team'))
-        col1, col2 = st.columns(2)
-        for col, team in zip([col1, col2], game_dat['Basics'].Name.values):
-            with col:
-                st.dataframe(player_stats[team])
-        # TODO: make the formatting look nice here and add team data with altair
-    # print rundown
-    with tab2:
-        for line in rundown:
-            st.write(line)
-        # TODO: make the rundown look nicer and add barplot with altair
-
-        # make_game_plot(rundown, game_dat['Basics']['Name'][0], game_dat['Basics']['Name'][1])
-
 
 
 # def make_game_plot(rundown, teamA, teamB):
@@ -164,40 +153,122 @@ def print_game_stats(game_dat):
 #     st.bar_chart(plot_df)
 
 
-def print_player_stats(player):
+def general_game_info(game_basics: pd.DataFrame) -> None:
     """
-    Display player stats.
+    Generate page for general game info
+
+    :param game_basics:      dataframe containing basic game info
+    ```
     """
-    st.write(f'{player} Player Stats')
-#     # TODO: calculate player stats averaged over multpiple games
+    t1_col1, t1_col2, t1_col3 = st.columns(3)  # columns for orientation
+    for i, col in enumerate([t1_col1, t1_col3]):
+        with col:  # print team scores
+            st.markdown(f'## {game_basics["Final"].values[i]} PTS')
+            st.markdown(f'### {game_basics["Name"].values[i]}')
+    with t1_col2:
+        st.markdown('&nbsp;')
+        st.markdown('&nbsp;')
+        st.markdown('### vs.')
 
 
-# build streamlit page
-st.set_page_config(page_title="Flamingo Fadaways", page_icon="🦩", layout="wide", initial_sidebar_state="expanded",
-                   menu_items={'About': "### Source Code on [Github](https://github.com/woldeaman/flamingo_stats)"})
+def game_details_page(game_dat: dict) -> None:
+    """
+    Build page to display nice game stats.
 
-# build sidebar
-dates, game_data, roster = load_data()
-st.sidebar.title('Flamingo Fadaways 🦩')
-dates_str = [d.strftime("%d.%m.%Y") for d in dates]
-game_selector = st.sidebar.selectbox('Matchday Stats', options=dates_str)
-show_match = st.sidebar.button('Show', key='show_match')
-game_idx = [i for i, d in enumerate(dates_str) if d in game_selector][0]
-player_selector = st.sidebar.selectbox('Player Stats', options=roster['Name'].values)
-show_player = st.sidebar.button('Show', key='show_player')
+    :param game_dat:      dictionary containing dataframes with game info
+    """
+    # generate rundown
+    rundown, player_stats = build_rundown(game_dat)
 
-# setup main page with logo and average stats
-with st.container():
-    col1, col2, col3 = st.columns(3)
-    col2.image('logo.jpg', width=250)
-with st.container():
-    col1, col2, col3 = st.columns(3)
-    col1.metric("League Seat", 9, delta=10)
-    col2.metric("PPG", "47 pts", "-10 pts")
-    col3.metric("FT%", "55%", "5%")
+    # display selected game data
+    general_game_info(game_dat['Basics'])
+    tab1, tab2, tab3 = st.tabs(["General", "Stats", "Play by Play"])
 
-# print either game rundown or player stats, depending on selection
-if show_match:
-    print_game_stats(game_data[game_idx])
-if show_player:
-    print_player_stats(player_selector)
+    with tab1:  # print general game info
+        st.markdown('&nbsp;')  # print quater scores
+        min_qtr_score = game_dat['Basics'].iloc[:, 2:-1].min().min()
+        max_qtr_score = game_dat['Basics'].iloc[:, 2:-1].max().max()
+        styled_df = game_dat['Basics'].set_index('Team').style.background_gradient(cmap='YlOrRd',
+                                                                                   subset=['1/4', '2/4', '3/4', '4/4'],
+                                                                                   vmin=min_qtr_score,
+                                                                                   vmax=max_qtr_score)
+        st.caption("Scores by Quarter")
+        st.dataframe(styled_df, use_container_width=True)
+
+    with tab2:  # print stats
+        st.markdown('&nbsp;')
+        col1, col2 = st.columns(2)
+        for col, team in zip([col1, col2], game_dat['Basics'].Name.values):
+            with col:
+                st.dataframe(player_stats[team])
+        # TODO: make the formatting look nice here and add team data with altair
+
+    with tab3:  # print game rundown
+        st.markdown('&nbsp;')
+        for line in rundown:
+            st.write(line)
+        # TODO: make the rundown look nicer and add barplot with altair
+        # make_game_plot(rundown, game_dat['Basics']['Name'][0], game_dat['Basics']['Name'][1])
+
+
+def build_sidebar(dates: list) -> tuple:
+    """
+    Build sidebar of web app.
+
+    ```
+    :param dates:           matchdates
+    :return game_idx:       index of the match to display
+    :return show_match:     whether or not to show match info
+    :return back_to_main:   whether or not to go back to main page
+    ```
+    """
+    # build sidebar
+    st.sidebar.title('Flamingo Fadaways 🦩')
+    dates_str = [d.strftime("%d.%m.%Y") for d in dates]
+    game_selector = st.sidebar.selectbox('Matchday Stats', options=dates_str)
+    show_match = st.sidebar.button('Show', key='show_match')
+    game_idx = [i for i, d in enumerate(dates_str) if d in game_selector][0]
+    # clicking this button will take you back to the main page
+    st.sidebar.button('Back to Homepage', key='home')
+
+    return show_match, game_idx
+############################################################################################################################
+
+
+########
+# MAIN #
+############################################################################################################################
+def main():
+    dates, game_data, roster = load_data()  # load data
+    # build streamlit page
+    st.set_page_config(page_title="Flamingo Fadaways", page_icon="🦩", layout="wide", initial_sidebar_state="expanded",
+                       menu_items={'About': "### Source Code on [Github](https://github.com/woldeaman/flamingo_stats)"})
+    # build sidebar
+    show_match, game_idx = build_sidebar(dates)
+
+    # setup main page with logo and average stats
+    with st.container():
+        col1, col2, col3 = st.columns(3)
+        col2.image('logo.jpg', width=250)
+    if not show_match:
+        with st.container():
+            col1, col2, col3 = st.columns(3)
+            col1.metric("League Seat", 10)  # TODO: maybe scrape this from FBL page?
+            # TODO: make this update automatically for latest game
+            col2.metric("PPG", "47 pts", "-10 pts")
+            col3.metric("FT%", "55%", "5%")
+
+    # print game rundown depending on selection
+    if show_match:
+        game_details_page(game_data[game_idx])
+
+    # TODO: add this at a later stage
+    # player_selector = st.sidebar.selectbox('Player Stats', options=roster['Name'].values)
+    # show_player = st.sidebar.button('Show', key='show_player')
+    # if show_player:
+    #     print_player_stats(player_selector)
+
+
+# can't have if __name__ == 'main' here for streamlit to work
+main()
+############################################################################################################################
