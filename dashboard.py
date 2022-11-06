@@ -1,6 +1,7 @@
 import pathlib
 import pandas as pd
 import streamlit as st
+import altair as alt
 
 
 #############
@@ -171,6 +172,33 @@ def general_game_info(game_basics: pd.DataFrame) -> None:
         st.markdown('### vs.')
 
 
+def team_stat_charts(player_stats: dict) -> list:
+    """
+    Build charts for team specific statistics.
+
+    ```
+    :param player_stats:         dictionary of dataframes containing player stats
+    :return charts:              list containing altair charts of team stats
+    ```
+    """
+    stats = ['FGM', '3PM', 'FT%', 'PF']
+    # create team stats dataframe
+    team_stats = pd.DataFrame(0, columns=stats, index=player_stats.keys())
+    for team in team_stats.index:
+        team_stats.loc[team] = player_stats[team].agg({'FGM': sum, '3PM': sum, 'FT%': 'mean', 'PF': sum})
+    team_stats['Team'] = team_stats.index
+
+    base = alt.Chart(team_stats)  # create altair donut charts for each stat
+    charts = [base.mark_arc(innerRadius=50).encode(theta=f'{stat}:Q',
+                                                   tooltip=['Team'],
+                                                   color=alt.Color('Team:O',
+                                                                   scale=alt.Scale(scheme='pastel1'),
+                                                                   legend=None)).properties(title=stat)
+              for stat in stats]
+
+    return charts
+
+
 def game_details_page(game_dat: dict) -> None:
     """
     Build page to display nice game stats.
@@ -182,29 +210,37 @@ def game_details_page(game_dat: dict) -> None:
 
     # display selected game data
     general_game_info(game_dat['Basics'])
-    tab1, tab2, tab3 = st.tabs(["General", "Stats", "Play by Play"])
+    tab1, tab2 = st.tabs(["Statistics", "Play by Play"])
 
-    with tab1:  # print general game info
-        st.markdown('&nbsp;')  # print quater scores
+    with tab1:
+        # print team stats in donut charts
+        altair_charts = team_stat_charts(player_stats)
+        cols = st.columns(len(altair_charts))
+        for col, chart in zip(cols, altair_charts):
+            with col:
+                st.altair_chart(chart, use_container_width=True)
+
+        # generate table for stats by quarter
         min_qtr_score = game_dat['Basics'].iloc[:, 2:-1].min().min()
         max_qtr_score = game_dat['Basics'].iloc[:, 2:-1].max().max()
-        styled_df = game_dat['Basics'].set_index('Team').style.background_gradient(cmap='YlOrRd',
-                                                                                   subset=['1/4', '2/4', '3/4', '4/4'],
-                                                                                   vmin=min_qtr_score,
-                                                                                   vmax=max_qtr_score)
-        st.caption("Scores by Quarter")
-        st.dataframe(styled_df, use_container_width=True)
+        styled_basics = game_dat['Basics'].set_index('Team').style.background_gradient(cmap='YlOrRd',
+                                                                                       subset=['1/4', '2/4', '3/4', '4/4'],
+                                                                                       vmin=min_qtr_score,
+                                                                                       vmax=max_qtr_score)
+        with st.container():
+            st.caption("Scores by Quarter")
+            st.dataframe(styled_basics, use_container_width=True)
+            st.markdown('&nbsp;')
 
-    with tab2:  # print stats
-        st.markdown('&nbsp;')
-        col1, col2 = st.columns(2)
-        for col, team in zip([col1, col2], game_dat['Basics'].Name.values):
-            with col:
-                st.dataframe(player_stats[team])
-        # TODO: make the formatting look nice here and add team data with altair
+        with st.container():  # print player stats in tables
+            col1, col2 = st.columns(2)
+            for col, team in zip([col1, col2], game_dat['Basics'].Name.values):
+                with col:
+                    st.caption(team)
+                    styled_stats = player_stats[team].style.format(precision=0, na_rep='No FTA')
+                    st.dataframe(styled_stats, use_container_width=True)
 
-    with tab3:  # print game rundown
-        st.markdown('&nbsp;')
+    with tab2:  # print game rundown
         for line in rundown:
             st.write(line)
         # TODO: make the rundown look nicer and add barplot with altair
