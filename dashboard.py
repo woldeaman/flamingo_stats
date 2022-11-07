@@ -7,7 +7,6 @@ import altair as alt
 #############
 # FUNCTIONS #
 ############################################################################################################################
-# @st.cache()
 # NOTE: this could also be hosted on google drive instad of inside the repo
 def load_data(data_path: pathlib.Path = pathlib.Path(__file__).parent / 'data') -> tuple:
     """
@@ -34,7 +33,7 @@ def load_data(data_path: pathlib.Path = pathlib.Path(__file__).parent / 'data') 
 
 
 def generate_foul_line(minute: float, score: dict, teamA_data: pd.DataFrame,
-                       teamB_data: pd.DataFrame, teamA: str, teamB: str) -> str:
+                       teamB_data: pd.DataFrame, teamA: str, teamB: str) -> tuple:
     """
     Generate line for foul play in rundown.
 
@@ -62,7 +61,6 @@ def generate_foul_line(minute: float, score: dict, teamA_data: pd.DataFrame,
     return foul_line, team_fouled, player_fouled
 
 
-# @st.cache()
 def build_rundown(game_data: dict) -> tuple:
     """
     Build markdown formatted rundown listing game events.
@@ -207,13 +205,16 @@ def team_stat_charts(player_stats: dict) -> list:
         team_stats.loc[team] = player_stats[team].agg({'FGM': sum, '3PM': sum, 'FT%': 'mean', 'PF': sum})
     team_stats['Team'] = team_stats.index
 
-    base = alt.Chart(team_stats)  # create altair donut charts for each stat
-    charts = [base.mark_arc(innerRadius=50).encode(theta=f'{stat}:Q',
-                                                   tooltip=['Team'],
-                                                   color=alt.Color('Team:O',
-                                                                   scale=alt.Scale(scheme='pastel1'),
-                                                                   legend=None)).properties(title=stat)
-              for stat in stats]
+    # create altair donut charts for each stat
+    # TODO: add value number to plot
+    charts_base = [alt.Chart(team_stats).encode(theta=alt.Theta(f'{stat}:Q', stack=True),
+                                                tooltip=['Team'],
+                                                color=alt.Color('Team:O',
+                                                                scale=alt.Scale(scheme='pastel1'),
+                                                                legend=None)).properties(title=stat) for stat in stats]
+    charts_donuts_1 = [cbase.mark_arc(innerRadius=50, stroke="#fff") for cbase in charts_base]
+    charts_numbers = [cbase.mark_text(radius=170, size=20).encode(text=alt.Text(f'{stat}:Q', format=",.0f")) for cbase, stat in zip(charts_base, stats)]
+    charts = [donut_1 for donut_1, number in zip(charts_donuts_1, charts_numbers)]
 
     return charts
 
@@ -249,12 +250,29 @@ def game_details_page(game_dat: dict) -> None:
             for col, team in zip([col1, col2], game_dat['Basics'].Name.values):
                 with col:
                     st.caption(f'Player Statistics {team}')
-                    styled_stats = player_stats[team].style.format(precision=0, na_rep='No FTA')
+                    styled_stats = player_stats[team].sort_index().style.format(precision=0, na_rep='No FTA')
                     st.dataframe(styled_stats, use_container_width=True)
 
     with tab2:  # print game rundown
         with st.container():
             st.markdown(rundown)
+
+
+# def check_team_performance(game_data: list):
+#     """
+#     For homepage check current team performance in comparison to last game.
+
+#     ```
+#     :param game_data:         list of all game data
+#     :return :    
+#     ```
+#     """
+#     stats = ['PTS', 'FGM', '3PM', 'FT%', 'PF']
+#     # create team stats dataframe
+#     team_stats = pd.DataFrame(0, columns=stats, index=player_stats.keys())
+#     for team in team_stats.index:
+#         team_stats.loc[team] = player_stats[team].agg({'FGM': sum, '3PM': sum, 'FT%': 'mean', 'PF': sum})
+#     team_stats['Team'] = team_stats.index
 
 
 def build_sidebar(dates: list) -> tuple:
