@@ -54,7 +54,7 @@ def build_rundown(game_data: dict) -> tuple:
     minute = 0
     score = {'A': 0, 'B': 0}
     whoscored = ''
-    nicer_rundown = [f'## Minute &nbsp; Score {teamA}:{teamB} &nbsp; Play']
+    nicer_rundown = [f'| Minute | {teamA} | Score | {teamB} |', '|:---:|:-----------|:-----:|-----------:|']
     for row in raw_rundown.iterrows():
         if row[1].Minute >= 0:  # gather current minute
             minute = row[1].Minute
@@ -65,7 +65,10 @@ def build_rundown(game_data: dict) -> tuple:
         if fouled_A.sum() or fouled_B.sum():  # if multiple players fouled in the same min, this will only print the 1st
             player_fouled = teamA_data[fouled_A].Name.values[0] if fouled_A.sum() else teamB_data[fouled_B].Name.values[0]
             team_fouled = teamA if fouled_A.sum() else teamB
-            foul_line = f'{int(minute):02d}: &nbsp; {team_fouled}: {player_fouled} commited a foul 🚨'
+            fl_entry_A = f'{player_fouled} commited a foul 🚨' if team_fouled in teamA else ''
+            fl_entry_B = f'{player_fouled} commited a foul 🚨' if team_fouled in teamB else ''
+            scoreA, scoreB = score.values()
+            foul_line = f'| {int(minute):02d} | {fl_entry_A} |{int(scoreA):d}:{int(scoreB):d} | {fl_entry_B} |'
             if foul_line not in nicer_rundown:  # only print once
                 nicer_rundown.append(foul_line)
                 player_stats[team_fouled].loc[player_fouled, 'PF'] += 1  # add foul to player stats
@@ -106,23 +109,24 @@ def build_rundown(game_data: dict) -> tuple:
 
         # make entry for nicer rundown
         scoreA, scoreB = score.values()
-        line = f'{int(minute):02d}: &nbsp; {int(scoreA):02d}:{int(scoreB):02d} &nbsp; {team}: {name} {play}'
+        entry_A = f'{name} {play}' if team in teamA else ''
+        entry_B = f'{name} {play}' if team in teamB else ''
+        line = f'| {int(minute):02d} | {entry_A} |{int(scoreA):d}:{int(scoreB):d} | {entry_B} |'
         nicer_rundown.append(line)
 
         # add line for end of quarter
         if minute % 10 == 0 and minute < 40:
             position = {1: 'st', 2: 'nd', 3: 'rd'}
             qtr = int(minute // 10)
-            qtr_line = f'----- &nbsp; End of {qtr}{position[qtr]} quarter - \
-                Score: {int(scoreA):02d}:{int(scoreB):02d} &nbsp; -----'
+            qtr_line = f'||||| **End of {qtr}{position[qtr]} quarter**'
             if raw_rundown.iloc[row[0] + 1].Minute > minute:  # only print at the end
                 nicer_rundown.append(qtr_line)
 
     # add lines for end of game
     winner = teamA if scoreA > scoreB else teamB
-    end = [f'----- &nbsp; End of 4th quarter - Score: {int(scoreA):02d}:{int(scoreB):02d} &nbsp; -----',
-           f'----- &nbsp; End of Game, Team {winner} wins: {int(scoreA):02d}:{int(scoreB):02d} &nbsp; -----']
+    end = ['||||| **End of 4th quarter**', f'||||| ***End of Game, Team {winner} wins***']
     nicer_rundown += end
+    nicer_rundown = '\n'.join(nicer_rundown)
     # calculate overall FT percentage and add nbr
     for team in [teamA, teamB]:
         player_stats[team]['FT%'] = 100 * player_stats[team]['FTM'] / player_stats[team]['FTA']
@@ -131,27 +135,6 @@ def build_rundown(game_data: dict) -> tuple:
         player_stats[team].index = [game_data[ord]['#'].values]
 
     return nicer_rundown, player_stats
-
-
-# def make_game_plot(rundown, teamA, teamB):
-#     """
-#     Make a bar plot for the game rundown.
-#     """
-#     # generate data from rundown
-#     seriesA, seriesB = pd.DataFrame(columns=['min', 'scoreA']), pd.DataFrame(columns=['min', 'scoreB'])
-#     for i, line in enumerate(rundown[1:]):
-#         min = int(line[:2])
-#         if teamA in line:
-#             seriesA.loc[i, 'min'] = min
-#             seriesA.loc[i, 'scoreA'] = int(line[3:].split(':')[0][-3:])
-#         elif teamB in line:
-#             seriesB.loc[i, 'min'] = min
-#             seriesB.loc[i, 'scoreB'] = int(line[3:].split(':')[1][:3])
-
-#     plot_df = pd.DataFrame(np.array([np.array(scoreA), -np.array(scoreB)]).T,
-#                            columns=['scoreA', 'scoreB'],
-#                            index=np.array(minutes))
-#     st.bar_chart(plot_df)
 
 
 def general_game_info(game_basics: pd.DataFrame) -> None:
@@ -241,10 +224,8 @@ def game_details_page(game_dat: dict) -> None:
                     st.dataframe(styled_stats, use_container_width=True)
 
     with tab2:  # print game rundown
-        for line in rundown:
-            st.write(line)
-        # TODO: make the rundown look nicer and add barplot with altair
-        # make_game_plot(rundown, game_dat['Basics']['Name'][0], game_dat['Basics']['Name'][1])
+        with st.container():
+            st.markdown(rundown)
 
 
 def build_sidebar(dates: list) -> tuple:
