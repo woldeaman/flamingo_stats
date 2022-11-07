@@ -33,6 +33,35 @@ def load_data(data_path: pathlib.Path = pathlib.Path(__file__).parent / 'data') 
     return dates, game_data, roster
 
 
+def generate_foul_line(minute: float, score: dict, teamA_data: pd.DataFrame,
+                       teamB_data: pd.DataFrame, teamA: str, teamB: str) -> str:
+    """
+    Generate line for foul play in rundown.
+
+    ```
+    :param minute:         current minute of the match
+    :param teamA_data:     player data for Team A
+    :param teamB_data:     player data for Team B
+    :param teamA:          name of Team A
+    :param teamB:          name of Team B
+    :return foul_line:     line for foul play in rundown
+    ```
+    """
+    fouled_A = (teamA_data.iloc[:, 3:] == minute).sum(1).astype(bool)
+    fouled_B = (teamB_data.iloc[:, 3:] == minute).sum(1).astype(bool)
+    if fouled_A.sum() or fouled_B.sum():  # if multiple players fouled in the same min, this will only print the 1st
+        player_fouled = teamA_data[fouled_A].Name.values[0] if fouled_A.sum() else teamB_data[fouled_B].Name.values[0]
+        team_fouled = teamA if fouled_A.sum() else teamB
+        fl_entry_A = f'{player_fouled} commited a foul 🚨' if team_fouled in teamA else ''
+        fl_entry_B = f'{player_fouled} commited a foul 🚨' if team_fouled in teamB else ''
+        scoreA, scoreB = score.values()
+        foul_line = f'| {int(minute):02d} | {fl_entry_A} | {int(scoreA):d}:{int(scoreB):d} | {fl_entry_B} |'
+    else:
+        foul_line, team_fouled, player_fouled = None, None, None
+
+    return foul_line, team_fouled, player_fouled
+
+
 # @st.cache()
 def build_rundown(game_data: dict) -> tuple:
     """
@@ -51,27 +80,13 @@ def build_rundown(game_data: dict) -> tuple:
                     for ord, team in zip(['TeamA', 'TeamB'], [teamA, teamB])}
 
     # running variables
-    minute = 0
+    minute, foul_min = 0, 0
     score = {'A': 0, 'B': 0}
     whoscored = ''
     nicer_rundown = [f'| Minute | {teamA} | Score | {teamB} |', '|:---:|:-----------|:-----:|-----------:|']
     for row in raw_rundown.iterrows():
         if row[1].Minute >= 0:  # gather current minute
             minute = row[1].Minute
-
-        # look for fouls in this minute
-        fouled_A = (teamA_data.iloc[:, 3:] == minute).sum(1).astype(bool)
-        fouled_B = (teamB_data.iloc[:, 3:] == minute).sum(1).astype(bool)
-        if fouled_A.sum() or fouled_B.sum():  # if multiple players fouled in the same min, this will only print the 1st
-            player_fouled = teamA_data[fouled_A].Name.values[0] if fouled_A.sum() else teamB_data[fouled_B].Name.values[0]
-            team_fouled = teamA if fouled_A.sum() else teamB
-            fl_entry_A = f'{player_fouled} commited a foul 🚨' if team_fouled in teamA else ''
-            fl_entry_B = f'{player_fouled} commited a foul 🚨' if team_fouled in teamB else ''
-            scoreA, scoreB = score.values()
-            foul_line = f'| {int(minute):02d} | {fl_entry_A} |{int(scoreA):d}:{int(scoreB):d} | {fl_entry_B} |'
-            if foul_line not in nicer_rundown:  # only print once
-                nicer_rundown.append(foul_line)
-                player_stats[team_fouled].loc[player_fouled, 'PF'] += 1  # add foul to player stats
 
         if row[1]['# A'] >= 0:  # gather scoring player and team name
             whoscored = 'A'
@@ -95,12 +110,26 @@ def build_rundown(game_data: dict) -> tuple:
             play = 'made a bucket ⛹️‍♂️'
             player_stats[team].loc[name, 'FGM'] += 1  # add to player stats
         elif points == 1:
+            # look for fouls in this minute since there were free throws
+            foul_line, team_fouled, player_fouled = generate_foul_line(minute, score, teamA_data, teamB_data, teamA, teamB)
+            if foul_line and foul_min != minute:  # only print once
+                foul_min = minute
+                nicer_rundown.append(foul_line)
+                player_stats[team_fouled].loc[player_fouled, 'PF'] += 1  # add foul to player stats
+
             play = 'made a free throw 🏀'
             player_stats[team].loc[name, 'FTM'] += 1  # add to player stats
             player_stats[team].loc[name, 'FTA'] += 1
         else:
             assert row[1][f'Score {whoscored}'] in '-', 'Error: No valid number of points made but also \
                 no sign for missed freethrow!'
+            # look for fouls in this minute since there were free throws
+            foul_line, team_fouled, player_fouled = generate_foul_line(minute, score, teamA_data, teamB_data, teamA, teamB)
+            if foul_line and foul_min != minute:  # only print once
+                foul_min = minute
+                nicer_rundown.append(foul_line)
+                player_stats[team_fouled].loc[player_fouled, 'PF'] += 1  # add foul to player stats
+
             play = 'missed a free throw 🧱'
             player_stats[team].loc[name, 'FTA'] += 1  # add to player stats
 
@@ -114,6 +143,13 @@ def build_rundown(game_data: dict) -> tuple:
         line = f'| {int(minute):02d} | {entry_A} |{int(scoreA):d}:{int(scoreB):d} | {entry_B} |'
         nicer_rundown.append(line)
 
+        # look for fouls in this minute not related to free throws
+        foul_line, team_fouled, player_fouled = generate_foul_line(minute, score, teamA_data, teamB_data, teamA, teamB)
+        if foul_line and foul_min != minute:  # only print once
+            foul_min = minute
+            nicer_rundown.append(foul_line)
+            player_stats[team_fouled].loc[player_fouled, 'PF'] += 1  # add foul to player stats
+
         # add line for end of quarter
         if minute % 10 == 0 and minute < 40:
             position = {1: 'st', 2: 'nd', 3: 'rd'}
@@ -124,7 +160,7 @@ def build_rundown(game_data: dict) -> tuple:
 
     # add lines for end of game
     winner = teamA if scoreA > scoreB else teamB
-    end = ['||||| **End of 4th quarter**', f'||||| ***End of Game, Team {winner} wins***']
+    end = ['||||| **End of 4th quarter**', f'||||| ***End of Game, Team {winner} Wins***']
     nicer_rundown += end
     nicer_rundown = '\n'.join(nicer_rundown)
     # calculate overall FT percentage and add nbr
@@ -203,23 +239,16 @@ def game_details_page(game_dat: dict) -> None:
             with col:
                 st.altair_chart(chart, use_container_width=True)
 
-        # generate table for stats by quarter
-        min_qtr_score = game_dat['Basics'].iloc[:, 2:-1].min().min()
-        max_qtr_score = game_dat['Basics'].iloc[:, 2:-1].max().max()
-        styled_basics = game_dat['Basics'].set_index('Team').style.background_gradient(cmap='YlOrRd',
-                                                                                       subset=['1/4', '2/4', '3/4', '4/4'],
-                                                                                       vmin=min_qtr_score,
-                                                                                       vmax=max_qtr_score)
         with st.container():
-            st.caption("Scores by Quarter")
-            st.dataframe(styled_basics, use_container_width=True)
+            st.caption("Team Scores by Quarter")
+            st.dataframe(game_dat['Basics'].set_index('Team'), use_container_width=True)
             st.markdown('&nbsp;')
 
         with st.container():  # print player stats in tables
             col1, col2 = st.columns(2)
             for col, team in zip([col1, col2], game_dat['Basics'].Name.values):
                 with col:
-                    st.caption(team)
+                    st.caption(f'Player Statistics {team}')
                     styled_stats = player_stats[team].style.format(precision=0, na_rep='No FTA')
                     st.dataframe(styled_stats, use_container_width=True)
 
@@ -239,14 +268,14 @@ def build_sidebar(dates: list) -> tuple:
     :return back_to_main:   whether or not to go back to main page
     ```
     """
+    # clicking this button will take you back to the main page
+    st.sidebar.button('Back to Homepage', key='home')
     # build sidebar
     st.sidebar.title('Flamingo Fadaways 🦩')
     dates_str = [d.strftime("%d.%m.%Y") for d in dates]
     game_selector = st.sidebar.selectbox('Matchday Stats', options=dates_str)
     show_match = st.sidebar.button('Show', key='show_match')
-    game_idx = [i for i, d in enumerate(dates_str) if d in game_selector][0]
-    # clicking this button will take you back to the main page
-    st.sidebar.button('Back to Homepage', key='home')
+    game_idx = [i for i, d in enumerate(dates_str) if d in game_selector][0]        
 
     return show_match, game_idx
 ############################################################################################################################
@@ -279,7 +308,7 @@ def main():
     if show_match:
         game_details_page(game_data[game_idx])
 
-    # TODO: add this at a later stage
+    # TODO: add this for player stats at a later stage
     # player_selector = st.sidebar.selectbox('Player Stats', options=roster['Name'].values)
     # show_player = st.sidebar.button('Show', key='show_player')
     # if show_player:
