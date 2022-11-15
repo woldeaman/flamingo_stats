@@ -206,17 +206,18 @@ def team_stat_charts(player_stats: dict) -> list:
     team_stats['Team'] = team_stats.index
 
     # create altair donut charts for each stat
-    # TODO: add value number to plot
     charts_base = [alt.Chart(team_stats).encode(theta=alt.Theta(f'{stat}:Q', stack=True),
-                                                tooltip=['Team'],
+                                                tooltip=['Team', alt.Tooltip(field=stat, format=",.0f")],
                                                 color=alt.Color('Team:O',
                                                                 scale=alt.Scale(scheme='pastel1'),
                                                                 legend=None)).properties(title=stat) for stat in stats]
     charts_donuts_1 = [cbase.mark_arc(innerRadius=50, stroke="#fff") for cbase in charts_base]
-    charts_numbers = [cbase.mark_text(radius=170, size=20).encode(text=alt.Text(f'{stat}:Q', format=",.0f")) for cbase, stat in zip(charts_base, stats)]
-    charts = [donut_1 for donut_1, number in zip(charts_donuts_1, charts_numbers)]
+    # TODO: try printing number next to chart...
+    # charts_numbers = [cbase.mark_text(radius=170, size=20).encode(text=alt.Text(f'{stat}:Q', format=",.0f"))
+    #                   for cbase, stat in zip(charts_base, stats)]
+    # charts = [donut_1 for donut_1, number in zip(charts_donuts_1, charts_numbers)]
 
-    return charts
+    return charts_donuts_1
 
 
 def game_details_page(game_dat: dict) -> None:
@@ -258,21 +259,28 @@ def game_details_page(game_dat: dict) -> None:
             st.markdown(rundown)
 
 
-# def check_team_performance(game_data: list):
-#     """
-#     For homepage check current team performance in comparison to last game.
+def check_team_performance(game_data: list) -> list:
+    """
+    For homepage check current team performance in comparison to last game.
 
-#     ```
-#     :param game_data:         list of all game data
-#     :return :    
-#     ```
-#     """
-#     stats = ['PTS', 'FGM', '3PM', 'FT%', 'PF']
-#     # create team stats dataframe
-#     team_stats = pd.DataFrame(0, columns=stats, index=player_stats.keys())
-#     for team in team_stats.index:
-#         team_stats.loc[team] = player_stats[team].agg({'FGM': sum, '3PM': sum, 'FT%': 'mean', 'PF': sum})
-#     team_stats['Team'] = team_stats.index
+    ```
+    :param game_data:         list of all game data
+    :return :
+    ```
+    """
+    stats = ['PTS', 'FGM', '3PM', 'FT%', 'PF']
+    team_data = []  # create team stats dataframe for each match
+    for game in game_data:
+        _, player_stats = build_rundown(game)
+        team_stats = pd.DataFrame(0, columns=stats, index=player_stats.keys())
+        for team in team_stats.index:
+            team_stats.loc[team] = player_stats[team].agg({'FGM': sum, '3PM': sum, 'FT%': 'mean', 'PF': sum})
+        team_stats['Team'] = team_stats.index
+        for team, pts in zip(game['Basics']['Name'].values, game['Basics']['Final'].values):
+            team_stats.loc[team, 'PTS'] = pts
+        team_data.append(team_stats)
+
+    return team_data
 
 
 def build_sidebar(dates: list) -> tuple:
@@ -291,9 +299,10 @@ def build_sidebar(dates: list) -> tuple:
     # build sidebar
     st.sidebar.title('Flamingo Fadaways 🦩')
     dates_str = [d.strftime("%d.%m.%Y") for d in dates]
-    game_selector = st.sidebar.selectbox('Matchday Stats', options=dates_str)
-    show_match = st.sidebar.button('Show', key='show_match')
-    game_idx = [i for i, d in enumerate(dates_str) if d in game_selector][0]        
+    form = st.sidebar.form('Select Match')
+    game_selector = form.selectbox('Matchday Stats', options=dates_str)
+    show_match = form.form_submit_button('Show')
+    game_idx = [i for i, d in enumerate(dates_str) if d in game_selector][0]
 
     return show_match, game_idx
 ############################################################################################################################
@@ -316,11 +325,20 @@ def main():
         col2.image('logo.jpg', width=250)
     if not show_match:
         with st.container():
+            st.markdown('### Team Performance')
             col1, col2, col3 = st.columns(3)
             col1.metric("League Seat", 10)  # TODO: maybe scrape this from FBL page?
-            # TODO: make this update automatically for latest game
-            col2.metric("PPG", "47 pts", "-10 pts")
-            col3.metric("FT%", "55%", "5%")
+            col1.markdown('')  # space since no diff is shown
+            # fill in team performance and trends
+            team_stats = check_team_performance(game_data)
+            latest = team_stats[-1][team_stats[-1]['Team'] == 'Flamingo Fadaways']
+            previous = team_stats[-2][team_stats[-2]['Team'] == 'Flamingo Fadaways']
+            for stat, txt, col in zip(['PTS', 'FT%', 'FGM', '3PM', 'PF'],
+                                    ['PTS', '%', 'FGs', 'TPs', 'Fouls'],
+                                    [col2, col3, col1, col2, col3]):
+                current = latest[stat].values[0]
+                diff = latest[stat].values[0] - previous[stat].values[0]
+                col.metric(stat, f"{int(current)} {txt}", f"{int(diff)} {txt}")
 
     # print game rundown depending on selection
     if show_match:
