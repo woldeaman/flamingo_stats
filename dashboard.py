@@ -327,15 +327,15 @@ def main():
         with st.container():
             st.markdown('### Team Performance')
             col1, col2, col3 = st.columns(3)
-            col1.metric("League Seat", 10)  # TODO: maybe scrape this from FBL page?
+            col1.metric("League Seat", 6)  # TODO: maybe scrape this from FBL page?
             col1.markdown('')  # space since no diff is shown
             # fill in team performance and trends
             team_stats = check_team_performance(game_data)
             latest = team_stats[-1][team_stats[-1]['Team'] == 'Flamingo Fadaways']
             previous = team_stats[-2][team_stats[-2]['Team'] == 'Flamingo Fadaways']
             for stat, txt, col in zip(['PTS', 'FT%', 'FGM', '3PM', 'PF'],
-                                    ['PTS', '%', 'FGs', 'TPs', 'Fouls'],
-                                    [col2, col3, col1, col2, col3]):
+                                      ['PTS', '%', 'FGs', 'TPs', 'Fouls'],
+                                      [col2, col3, col1, col2, col3]):
                 current = latest[stat].values[0]
                 diff = latest[stat].values[0] - previous[stat].values[0]
                 col.metric(stat, f"{int(current)} {txt}", f"{int(diff)} {txt}")
