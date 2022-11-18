@@ -1,7 +1,9 @@
 import pathlib
+import requests
 import pandas as pd
-import streamlit as st
 import altair as alt
+from lxml import html
+import streamlit as st
 
 
 #############
@@ -283,6 +285,25 @@ def check_team_performance(game_data: list) -> list:
     return team_data
 
 
+def scrape_league_seat(webpage: str = 'https://fbl.berlin/tabellen') -> int:
+    """
+    Scrape our current table placement from the FBL webpage.
+
+    ```
+    :param webpage:         link to page for table
+    :return league_seat:    current ranking in table
+    ```
+    """
+    page = requests.get(webpage)  # parse website
+    page_tree = html.fromstring(page.content)  # get page as xml
+    # use xpath query to find flamingos team
+    teams = page_tree.body.xpath('//*[@data-label="Team"]')  # gather all teams
+    flamingos = [team for team in teams if team.text and 'Flamingo' in team.text]  # look for our team
+    league_seat = int(flamingos[0].getparent().xpath('.//*[@data-label="Pos."]')[0].text)  # extract league seat info
+
+    return league_seat
+
+
 def build_sidebar(dates: list) -> tuple:
     """
     Build sidebar of web app.
@@ -327,7 +348,13 @@ def main():
         with st.container():
             st.markdown('### Team Performance')
             col1, col2, col3 = st.columns(3)
-            col1.metric("League Seat", 6)  # TODO: maybe scrape this from FBL page?
+            with st.spinner('Loading Team Stats...'):
+                try:  # try finding team league seat
+                    league_seat = scrape_league_seat()
+                except Exception:  # if it couldn't be scraped, set to zero
+                    league_seat = 0
+
+            col1.metric("League Seat", league_seat)
             col1.markdown('')  # space since no diff is shown
             # fill in team performance and trends
             team_stats = check_team_performance(game_data)
