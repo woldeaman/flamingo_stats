@@ -1,5 +1,5 @@
 # Flamingo Fadaways Dashboard 🏀
-This repo contains code for a dashboard of the latest statistics of the Flamingo Fadaways Team of the [FBL](https://fbl.berlin/). The dashboard is created using the python package [streamlit](https://streamlit.io/) and also requires the [altair](https://altair-viz.github.io/) package for rendering the visualizations. It is hosted directly on [streamlit](https://share.streamlit.io/) and can be accessed [here](https://flamingo-stats.streamlit.app/).
+This repo contains code for a dashboard of the latest statistics of the Flamingo Fadaways Team of the [FBL](https://fbl.berlin/)(**F**reizeit **B**asketball **L**iga Berlin). The dashboard is created using the python package [streamlit](https://streamlit.io/) and also requires the [altair](https://altair-viz.github.io/) package for rendering the visualizations. It is hosted directly on [streamlit](https://share.streamlit.io/) and can be accessed [here](https://flamingo-stats.streamlit.app/).
 
 ## Team Performance
 The current overall performance of the team is printed on the homepage. Statistics are shown for the latest game and progress is in comparison to the previous match.
